@@ -5,20 +5,16 @@ int main(int argc,char *argv[]){
 char buffer[MAX_LINE_SIZE];
 
 while(1){
-    printf(">>spX~~");
- fflush(stdout);                          // flush prompt before blocking
+    printf("sPx>>");
+    fflush(stdout);
+    if(fgets(buffer,sizeof(buffer),stdin)==NULL)
+    break;
+     buffer[strcspn(buffer, "\n")] = '\0';
 
-    if (fgets(buffer, MAX_LINE_SIZE, stdin) == NULL)
-        break;                               // Ctrl-D exits cleanly
+     if (strcmp(buffer,"exit")==0) break;
 
-    buffer[strcspn(buffer, "\n")] = '\0';    // strip trailing newline
+     printf("You have typed %s\n",buffer);
 
-    if (strcmp(buffer, "exit") == 0)
-        break;
-
-    printf("you typed: %s\n", buffer); 
-
-    
 }
 
 
