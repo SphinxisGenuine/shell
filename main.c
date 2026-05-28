@@ -11,7 +11,10 @@ typedef struct {
   char *output_filr;
   int append;
 } Redirection;
-
+typedef struct {
+  char **argv;
+  Redirection redir;
+} Command;
 int parseredirection(Redirection *redir, char **argv) {
   int i = 0;
   int newcount = 0;
@@ -76,6 +79,64 @@ int tokenize(char *line, char **arg) {
   arg[count] = NULL;
   return count;
 }
+void pipeparser(char **argv, Command *left, Command *right) {
+  int pipeindex = -1;
+  int i = 0;
+  while (argv[i] != NULL) {
+    if (strcmp(argv[i], "|") == 0) {
+      pipeindex = i;
+    }
+    i++;
+  }
+  if (pipeindex == -1) {
+    return;
+  }
+  int leftcount = 0;
+  int rightcount = 0;
+  for (i = 0; i < pipeindex; i++) {
+    left->argv[leftcount++] = argv[i];
+  }
+  i = pipeindex + 1;
+  while (argv[i] != NULL) {
+    right->argv[rightcount++] = argv[i++];
+  }
+  left->argv[leftcount] = NULL;
+  right->argv[rightcount] = NULL;
+  leftcount = parseredirection(&left->redir, left->argv);
+  rightcount = parseredirection(&right->redir, right->argv);
+
+  // Pipe cmd_pipe = malloc(sizeof(Pipe));
+  // cmd_pipe.left = left;
+  // cmd_pipe.right = right;
+}
+void pipeExecution(Command *left, Command *right) {
+  int fds[2];
+  pipe(fds);
+  pid_t left_pid = fork();
+  if (left_pid == 0) {
+    dup2(fds[1], 1);
+    close(fds[0]);
+    close(fds[1]);
+    redirection(&left->redir);
+    execvp(left->argv[0], left->argv);
+    perror("pipe: exec failed");
+    exit(1);
+  }
+  pid_t right_pid = fork();
+  if (right_pid == 0) {
+    dup2(fds[0], 0);
+    close(fds[0]);
+    close(fds[1]);
+    redirection(&right->redir);
+    execvp(right->argv[0], right->argv);
+    perror("pipe: exec failed");
+    exit(1);
+  }
+  close(fds[0]);
+  close(fds[1]);
+  waitpid(left_pid, NULL, 0);
+  waitpid(right_pid, NULL, 0);
+}
 int main(int argc, char *argv[]) {
   char buffer[MAX_LINE_SIZE];
   char *cmd_argv[100];
@@ -93,6 +154,14 @@ int main(int argc, char *argv[]) {
     printf("You have typed %s\n", buffer);
 
     int count = tokenize(buffer, cmd_argv);
+    int haspipe = 0;
+    int i = 0;
+    while (cmd_argv[i] != NULL) {
+      if (strcmp(cmd_argv[i], "|") == 0) {
+        haspipe = 1;
+      }
+      i++;
+    }
     if (strcmp(cmd_argv[0], "cd") == 0) {
       // compare empty string
       if (cmd_argv[1] != NULL) {
@@ -112,6 +181,21 @@ int main(int argc, char *argv[]) {
       getcwd(buffer, 100);
       printf("%s\n", buffer);
       continue;
+    } else if (haspipe) {
+      Command left, right;
+      char *left_argv[100];
+      char *right_argv[100];
+      left.argv = left_argv;
+      right.argv = right_argv;
+      right.redir.input_file = NULL;
+      right.redir.output_filr = NULL;
+      right.redir.append = 0;
+      left.redir.input_file = NULL;
+      left.redir.output_filr = NULL;
+      left.redir.append = 0;
+      pipeparser(cmd_argv, &left, &right);
+      pipeExecution(&left, &right);
+
     } else {
       Redirection redir;
       redir.input_file = NULL;
