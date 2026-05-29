@@ -1,4 +1,5 @@
 #include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -140,7 +141,7 @@ void pipeExecution(Command *left, Command *right) {
 int main(int argc, char *argv[]) {
   char buffer[MAX_LINE_SIZE];
   char *cmd_argv[100];
-
+  signal(SIGINT, SIG_IGN);
   while (1) {
     printf("sPx>>");
     fflush(stdout);
@@ -208,6 +209,7 @@ int main(int argc, char *argv[]) {
         printf("unable to create child process\n");
       } else if (p == 0) {
         redirection(&redir);
+        signal(SIGINT, SIG_DFL);
         execvp(cmd_argv[0], cmd_argv);
         perror("exec failed");
       } else {
