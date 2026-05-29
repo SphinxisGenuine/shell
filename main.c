@@ -7,6 +7,10 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #define MAX_LINE_SIZE 1024
+#define BLUE "\033[34m"
+#define RESET "\033[0m"
+#define CYAN "\033[36m"
+#define BOLD "\033[1m"
 typedef struct {
   char *input_file;
   char *output_filr;
@@ -16,6 +20,28 @@ typedef struct {
   char **argv;
   Redirection redir;
 } Command;
+void print_banner() {
+  printf(
+      CYAN
+      "╔══════════════════════════════════════════════════════════════╗\n"
+      "║                                                             ║\n" RESET
+
+      BOLD "║    ███████╗██████╗ ██╗  ██╗                                 ║\n"
+      "║    ██╔════╝██╔══██╗╚██╗██╔╝                                 ║\n"
+      "║    ███████╗██████╔╝ ╚███╔╝                                  ║\n"
+      "║    ╚════██║██╔═══╝  ██╔██╗                                  ║\n"
+      "║    ███████║██║     ██╔╝ ██╗                                 ║\n"
+      "║    ╚══════╝╚═╝     ╚═╝  ╚═╝                                 ║\n" RESET
+
+      CYAN
+      "║                                                             ║\n" RESET
+
+      "║            S P H I N X   T E R M I N A L                    ║\n"
+
+      CYAN "║                                                             ║\n"
+      "╚══════════════════════════════════════════════════════════════╝"
+      "\n" RESET);
+}
 int parseredirection(Redirection *redir, char **argv) {
   int i = 0;
   int newcount = 0;
@@ -138,12 +164,87 @@ void pipeExecution(Command *left, Command *right) {
   waitpid(left_pid, NULL, 0);
   waitpid(right_pid, NULL, 0);
 }
+void executeline(char **line) {
+  int haspipe = 0;
+  int i = 0;
+  while (line[i] != NULL) {
+    if (strcmp(line[i], "|") == 0) {
+      haspipe = 1;
+    }
+    i++;
+  }
+  if (strcmp(line[0], "cd") == 0) {
+    // compare empty string
+    if (line[1] != NULL) {
+      if (chdir(line[1]) != 0)
+        perror("cd");
+
+      return;
+      ;
+    }
+    char *HOME = getenv("HOME");
+
+    if (chdir(HOME) < 0) {
+      perror("cd");
+      return;
+    }
+  } else if (strcmp(line[0], "pwd") == 0) {
+    char buffer[100];
+    getcwd(buffer, 100);
+    printf("%s\n", buffer);
+    return;
+  } else if (haspipe) {
+    Command left, right;
+    char *left_argv[100];
+    char *right_argv[100];
+    left.argv = left_argv;
+    right.argv = right_argv;
+    right.redir.input_file = NULL;
+    right.redir.output_filr = NULL;
+    right.redir.append = 0;
+    left.redir.input_file = NULL;
+    left.redir.output_filr = NULL;
+    left.redir.append = 0;
+    pipeparser(line, &left, &right);
+    pipeExecution(&left, &right);
+
+  } else {
+    Redirection redir;
+    redir.input_file = NULL;
+    redir.output_filr = NULL;
+    redir.append = -1;
+    int count = parseredirection(&redir, line);
+    pid_t p = fork();
+
+    if (p == -1) {
+      printf("unable to create child process\n");
+    } else if (p == 0) {
+      redirection(&redir);
+      signal(SIGINT, SIG_DFL);
+      execvp(line[0], line);
+      perror("exec failed");
+    } else {
+      waitpid(p, NULL, 0);
+    }
+  }
+}
 int main(int argc, char *argv[]) {
   char buffer[MAX_LINE_SIZE];
   char *cmd_argv[100];
   signal(SIGINT, SIG_IGN);
+  print_banner();
+  FILE *fptr;
+  fptr = fopen(".sPxrc", "r");
+  char filecontent[100];
+  while (fgets(filecontent, sizeof(filecontent), fptr)) {
+    tokenize(filecontent, cmd_argv);
+    executeline(cmd_argv);
+  }
+  fclose(fptr);
   while (1) {
-    printf("sPx>>");
+    // int fd = open(".sPxrc",O_RDONLY);
+
+    printf(BLUE "sPx" RESET ">>");
     fflush(stdout);
     if (fgets(buffer, sizeof(buffer), stdin) == NULL)
       break;
@@ -151,71 +252,9 @@ int main(int argc, char *argv[]) {
 
     if (strcmp(buffer, "exit") == 0)
       break;
-
-    printf("You have typed %s\n", buffer);
-
     int count = tokenize(buffer, cmd_argv);
-    int haspipe = 0;
-    int i = 0;
-    while (cmd_argv[i] != NULL) {
-      if (strcmp(cmd_argv[i], "|") == 0) {
-        haspipe = 1;
-      }
-      i++;
-    }
-    if (strcmp(cmd_argv[0], "cd") == 0) {
-      // compare empty string
-      if (cmd_argv[1] != NULL) {
-        if (chdir(cmd_argv[1]) != 0)
-          perror("cd");
-
-        continue;
-      }
-      char *HOME = getenv("HOME");
-
-      if (chdir(HOME) < 0) {
-        perror("cd");
-        continue;
-      }
-    } else if (strcmp(cmd_argv[0], "pwd") == 0) {
-      char buffer[100];
-      getcwd(buffer, 100);
-      printf("%s\n", buffer);
-      continue;
-    } else if (haspipe) {
-      Command left, right;
-      char *left_argv[100];
-      char *right_argv[100];
-      left.argv = left_argv;
-      right.argv = right_argv;
-      right.redir.input_file = NULL;
-      right.redir.output_filr = NULL;
-      right.redir.append = 0;
-      left.redir.input_file = NULL;
-      left.redir.output_filr = NULL;
-      left.redir.append = 0;
-      pipeparser(cmd_argv, &left, &right);
-      pipeExecution(&left, &right);
-
-    } else {
-      Redirection redir;
-      redir.input_file = NULL;
-      redir.output_filr = NULL;
-      redir.append = -1;
-      int count = parseredirection(&redir, cmd_argv);
-      pid_t p = fork();
-
-      if (p == -1) {
-        printf("unable to create child process\n");
-      } else if (p == 0) {
-        redirection(&redir);
-        signal(SIGINT, SIG_DFL);
-        execvp(cmd_argv[0], cmd_argv);
-        perror("exec failed");
-      } else {
-        waitpid(p, NULL, 0);
-      }
-    }
+    executeline(cmd_argv);
+    continue;
   }
   return 0;
 }
